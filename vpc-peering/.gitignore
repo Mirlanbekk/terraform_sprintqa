@@ -1,0 +1,12 @@
+# Local .terraform directories
+**/.terraform/*
+<<<<<<< HEAD
+=======
+.terraform
+>>>>>>> 48d3c0f...  vpc peering
+
+# .tfstate files
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform.lock.hcl

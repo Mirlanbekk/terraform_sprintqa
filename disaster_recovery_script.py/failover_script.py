@@ -4,6 +4,7 @@ import os
 import json
 import sys
 from time import sleep
+from botocore import endpoint
 session = boto3.Session(profile_name='development')
 east = 'us-east-1'
 west = 'us-west-2'
@@ -17,8 +18,8 @@ route53 = boto3.client("route53")
 #     TableName='dr_failover'
 # )
 # print(response)
-#Name='disaster-recovery.pirmatovv.com'
-#Record='disastryrecoverywest-env.eba-saxez2mp.us-west-2.elasticbeanstalk.com.'
+#Name='disaster-recovery.devopstechskills.com'
+#Record='disasterrecoverywest-env.eba-hjbt2b2v.us-west-2.elasticbeanstalk.com.'
 #weight=0
 Dynamo='dr_failover'
 #SetID=str(3)
@@ -26,14 +27,14 @@ Dynamo='dr_failover'
 #hostedzoneid='Z117KPS5GTRQ2G' # east eb hosted zone id by aws in ease
 failover_from = 'East'
 failover_to = 'West'
-def update_dynamo(Name, Record, weight, Dynamo):
+def update_dynamo(Name, Record, Weight, Dynamo):
     try:
-        resp = dynamo_client.update_item(TableName=Dynamo, Key={'Name': {'S': Name}, 'Records': {'S': Record}}, AttributeUpdates={'Weight':{'Value':{'N': str(weight)}}})
-        print("Dynamo Updated with: " + Name + " " + Record + " " + str(weight))
+        resp = dynamo_client.update_item(TableName=Dynamo, Key={'Name': {'S': Name}, 'Records': {'S': Record}}, AttributeUpdates={'Weight':{'Value':{'N': str(Weight)}}})
+        print("Dynamo Updated with: " + Name + " " + Record + " " + str(Weight))
     except Exception as error:
         print(error)
 #update_dynamo(Name, Record, weight, Dynamo)
-def update_route53_aliastarget(Name,SetID,weight,Record,hostedzoneid, TTL):
+def update_route53_aliastarget(Name,SetID,weight,hostedzoneid,Record,TTL):
     try: 
         response = route53.change_resource_record_sets(
             HostedZoneId='Z077091817KZHK8SKIM86', #your own hosted zone id
@@ -71,36 +72,57 @@ def main():
         TTL = int(i["TTL"])
         Record = i["Records"]
         Name = i["Name"]
-        print(Weight)
-        print(Type)
-        print(SetID)
-        print(TTL)
-        print(Record)
-        print(Name)
+        # print(type(Weight))
+        # print(Type)
+        # print(type(SetID))
+        # print(type(TTL))
+        # print(Record)
+        # print(Name)
         if SetID=='2':
-            region_name='west'
+            app_color='blue'
         elif SetID=='3':
-            region_name='east'
+            app_color='green'
         if failover_to=='West' and failover_from=='East':
             print('failing over from East to West')
-            if region_name=='east':
+            if app_color=='green':
+                Weight=0
                 if Type == "ALIAS":
                     weight = 0 # weight from the Route53 record set 
                     hostedzoneid = "Z117KPS5GTRQ2G" #ElasticBeanstalk us-east-1 Route53 hosted zone ID
                     print("Calling Update ALIAS function")
                     print(Name)
-                    update_route53_aliastarget(Name, weight, hostedzoneid, TTL, SetID, Record)
+                    update_route53_aliastarget(Name,SetID,weight,hostedzoneid,Record,TTL)
                 else:
-                    print('Error')
-            elif region_name=='west':
+                    response = route53.change_resource_record_sets(HostedZoneId="Z077091817KZHK8SKIM86", # your public hosted zone id
+                            ChangeBatch = {
+                                "Comment" : "",
+                                "Changes": [
+                                    {
+                                        "Action" : "UPSERT",
+                                        "ResourceRecordSet" : {
+                                            "Name": Name,
+                                            "Type" : Type,
+                                            "Weight" : 0,
+                                            "TTL" : TTL,
+                                            "SetIdentifier": SetID,
+                                            "ResourceRecords":[{"Value":Record}]
+                                            }
+                                        }
+                                    ]
+                                }
+                            )
+                update_dynamo(Name, Record, Weight, Dynamo)
+            elif app_color=='blue':
                 if Type == "ALIAS":
                     weight = 1 # weight from the Route53 record set 
                     hostedzoneid = "Z38NKT9BP95V3O" #ElasticBeanstalk us-west-2 Route53 hosted zone ID
                     print("Calling Update ALIAS function")
                     print(Name)
-                    update_route53_aliastarget(Name, weight, hostedzoneid, TTL, SetID, Record)
+                    update_route53_aliastarget(Name,SetID,weight,hostedzoneid,Record,TTL)
                 else:
                     print('Error')
+            else:
+                pass
         elif failover_from=='West' and failover_to=='East':
             print('failing over from West to East')
 main()
